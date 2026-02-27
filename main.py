@@ -5,7 +5,7 @@ from aiogram import Bot, Dispatcher, types, F
 
 # Railway Variables-dan tokenni olamiz
 API_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = 906441402 # Sizning ID-ingiz
+ADMIN_ID = 8203513150 # Sizning ID-ingiz
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
