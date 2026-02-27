@@ -2,7 +2,7 @@ import asyncio
 from aiogram import Bot, Dispatcher, types, F
 
 # O'ZGARUVCHILARNI TO'LDIRING
-API_TOKEN = 'TOKENINGIZNI_SHU_YERGA_YOZING'
+API_TOKEN = '83526344577:AAGUbPMUTERa96zdovgofzkN_xL2L4kBg94'
 ADMIN_ID = 12345678  # Telegramdan @userinfobot orqali ID'ngizni olib yozing
 
 bot = Bot(token=API_TOKEN)
