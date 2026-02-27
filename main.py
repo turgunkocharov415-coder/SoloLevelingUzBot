@@ -1,10 +1,8 @@
-import asyncio
-from aiogram import Bot, Dispatcher, types, F
+import os
+from aiogram import Bot, Dispatcher
 
-# O'ZGARUVCHILARNI TO'LDIRING
-API_TOKEN = '83526344577:AAGUbPMUTERa96zdovgofzkN_xL2L4kBg94'
-ADMIN_ID = 12345678  # Telegramdan @userinfobot orqali ID'ngizni olib yozing
-
+# Tokenni Railway variables'dan oladi
+API_TOKEN = os.getenv("83526344577:AAGUbPMUTERa96zdovgofzkN_xL2L4kBg94")
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
