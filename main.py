@@ -3,7 +3,7 @@ import asyncio
 from aiogram import Bot, Dispatcher, types, F
 
 # Railway Variables-dan tokenni olamiz
-API_TOKEN = os.getenv("83526344577:AAGUbPMUTERa96zdovgofzkN_xL2L4kBg94")
+API_TOKEN = os.getenv("BOT_TOKEN")
 
 # DIQQAT: Bu yerga o'zingizning Telegram ID-ingizni yozing (@userinfobot orqali olish mumkin)
 ADMIN_ID = 906441402  # Misol: 512345678
