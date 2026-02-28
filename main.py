@@ -2,15 +2,16 @@ import os
 import asyncio
 import sqlite3
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
+# Railway Variables
 API_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = 906441402  # O'z ID-ingizni tekshirib yozing!
+ADMIN_ID = 8203513150  # O'z ID-ingizni bu yerga yozing!
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# --- BAZA FUNKSIYALARI ---
+# --- MA'LUMOTLAR BAZASI ---
 def init_db():
     conn = sqlite3.connect("movies.db")
     cursor = conn.cursor()
@@ -26,7 +27,7 @@ def get_movie(code):
     conn.close()
     return res[0] if res else None
 
-# --- MENYULAR (KEYBOARDS) ---
+# --- ASOSIY MENYU ---
 def get_main_menu():
     kb = [
         [KeyboardButton(text="1-FASL"), KeyboardButton(text="2-FASL")],
@@ -35,12 +36,13 @@ def get_main_menu():
     ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
+# --- QISMLAR MENYUSI ---
 def get_parts_menu(season_num, total_parts):
     buttons = []
     row = []
     for i in range(1, total_parts + 1):
         row.append(KeyboardButton(text=f"{season_num}-fasl {i}-qism"))
-        if len(row) == 3: # Har qatorda 3 tadan tugma
+        if len(row) == 3:
             buttons.append(row)
             row = []
     if row: buttons.append(row)
@@ -56,32 +58,46 @@ async def start_command(message: types.Message):
 async def back_to_main(message: types.Message):
     await message.answer("Asosiy menyu:", reply_markup=get_main_menu())
 
+@dp.message(F.text == "📢 Kanalimiz")
+async def channel_link(message: types.Message):
+    await message.answer("Bizning rasmiy kanalimiz: \nhttps://t.me/My_AnimeChannel")
+
 # FASL TANLANGANDA QISMLARNI CHIQARISH
 @dp.message(F.text.in_(["1-FASL", "2-FASL", "3-FASL"]))
 async def show_parts(message: types.Message):
-    season = message.text.split("-")[0] # "1", "2" yoki "3" ni oladi
-    
-    # Har bir faslda nechta qism borligini shu yerda belgilaysiz:
-    parts_count = {"1": 10, "2": 13, "3": 15} 
+    season = message.text.split("-")[0]
+    # Qismlar sonini shu yerda to'g'irlashingiz mumkin:
+    parts_count = {"1": 10, "2": 13, "3": 15}
     count = parts_count.get(season, 10)
-    
-    await message.answer(f"✨ {season}-fasl qismlarini tanlang:", 
-                         reply_markup=get_parts_menu(season, count))
+    await message.answer(f"✨ {season}-fasl qismlarini tanlang:", reply_markup=get_parts_menu(season, count))
 
-# QISM TANLANGANDA VIDEONI YUBORISH
+# --- VIDEONI CHIQARIB BERISH (RASMDAGIDEK FORMATDA) ---
 @dp.message(F.text.contains("-fasl ") & F.text.contains("-qism"))
 async def send_video_part(message: types.Message):
-    # Matndan kodni yasaymiz: "1-fasl 5-qism" -> "1_5"
-    text = message.text.replace("-fasl", "").replace("-qism", "").split()
-    code = f"{text[0]}_{text[1]}"
+    data = message.text.replace("-fasl", "").replace("-qism", "").split()
+    season, part = data[0], data[1]
+    code = f"{season}_{part}"
     
     file_id = get_movie(code)
+    
     if file_id:
-        await message.answer_video(video=file_id, caption=f"🎬 {message.text}")
+        # RASMDAGI KABI MATN VA KANAL LINKI:
+        caption_text = (
+            f"🎬 **Anime:** Solo Leveling\n"
+            f"🎞 **{season}-fasl {part}-qism**\n"
+            f"🇺🇿 **Tili:** O'zbek Tilida\n\n"
+            f"Asosiy Kanal 👇👇\n"
+            f"@My_AnimeChannel 📌"
+        )
+        await message.answer_video(
+            video=file_id, 
+            caption=caption_text, 
+            parse_mode="Markdown"
+        )
     else:
-        await message.answer("⚠️ Bu qism hali yuklanmagan.")
+        await message.answer("⚠️ Bu qism hali yuklanmagan yoki bazada yo'q.")
 
-# ADMIN: Video yuklash (Masalan: 1_1, 1_2 ko'rinishida yuklang)
+# ADMIN: Video yuklash (Masalan: 1_1 kodi bilan)
 @dp.message(F.video & (F.from_user.id == ADMIN_ID))
 async def add_movie_handler(message: types.Message):
     if message.caption:
@@ -91,9 +107,7 @@ async def add_movie_handler(message: types.Message):
         cursor.execute("INSERT OR REPLACE INTO movies VALUES (?, ?)", (code, message.video.file_id))
         conn.commit()
         conn.close()
-        await message.reply(f"✅ Baza yangilandi! Kod: {code}")
-    else:
-        await message.reply("⚠️ Izohga kodni (masalan: 1_1) yozing!")
+        await message.reply(f"✅ Saqlandi! Kod: {code}")
 
 async def main():
     init_db()
