@@ -8,10 +8,8 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 
 # --- SOZLAMALAR ---
 API_TOKEN = os.getenv("BOT_TOKEN")
-# ADMIN_ID ni o'zingizniki bilan tekshiring
 ADMIN_ID = 8203513150  
 
-# KANAL VA BOT LINKLARI
 CHANNEL_ID = "@My_AnimeChannel" 
 BOT_USER = "SoloLevelingUzBot"
 
@@ -74,8 +72,8 @@ async def send_video_part(message: types.Message):
         
         if file_id:
             try:
-                await bot.send_video(chat_id=message.chat.id, video=file_id, 
-                                     caption=f"🎬 1-fasl {part}-qism\n\n@My_AnimeChannel")
+                # Video yuborish
+                await message.answer_video(video=file_id, caption=f"🎬 {season}-fasl {part}-qism\n\n{CHANNEL_ID}")
             except Exception as e:
                 await message.answer(f"❌ Xato: {e}")
         else:
