@@ -8,7 +8,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 # --- SOZLAMALAR ---
 API_TOKEN = os.getenv("BOT_TOKEN")
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("DATABASE_URL") # Railway Postgres variabli
 ADMIN_ID = 8203513150  
 CHANNEL_ID = "@My_AnimeChannel" 
 
@@ -22,6 +22,7 @@ def get_db_connection():
 def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
+    # Ma'lumotlarni abadiy saqlash uchun jadval
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS movies (
             code TEXT PRIMARY KEY, 
@@ -40,8 +41,13 @@ def get_uploaded_parts(season_num):
     codes = cursor.fetchall()
     cursor.close()
     conn.close()
-    parts = [int(c[0].split('_')[1]) for c in codes if '_' in c[0]]
-    return sorted(parts)
+    # Faqat raqamli qismlarni ajratib olish (xatolarsiz)
+    parts = []
+    for c in codes:
+        try:
+            parts.append(int(c[0].split('_')[1]))
+        except: continue
+    return sorted(list(set(parts)))
 
 def get_movie_data(code):
     conn = get_db_connection()
@@ -77,7 +83,7 @@ def get_dynamic_menu(season_num):
     buttons.append([KeyboardButton(text="⬅️ Orqaga")])
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
 
-# --- BOT FUNKSIYALARI ---
+# --- BOT BUYRUQLARI ---
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     await message.answer("🎬 Salom! Kerakli faslni tanlang 👇", reply_markup=get_main_menu())
@@ -97,17 +103,21 @@ async def go_back(message: types.Message):
 
 @dp.message(F.text.contains("-fasl") & F.text.contains("-qism"))
 async def send_video(message: types.Message):
+    # Matndan fasl va qism raqamini ajratib olish
     nums = re.findall(r'\d+', message.text)
     if len(nums) >= 2:
         code = f"{nums[0]}_{nums[1]}"
         f_id, title = get_movie_data(code)
         if f_id:
-            cap = f"🎬 **BAKI HANMA:** {title}\n🎞 **{nums[0]}-fasl {nums[1]}-qism**\n\n{CHANNEL_ID}"
+            cap = f"🎬 **Anime:** {title}\n🎞 **{nums[0]}-fasl {nums[1]}-qism**\n\n{CHANNEL_ID}"
             await message.answer_video(video=f_id, caption=cap, parse_mode="Markdown")
+        else:
+            await message.answer("⚠️ Video topilmadi. Qaytadan yuklab ko'ring.")
 
 @dp.message(F.video & (F.from_user.id == ADMIN_ID))
 async def save_video(message: types.Message):
     if message.caption:
+        # Yuklash formati: "1_1 Solo Leveling" yoki shunchaki "1_1"
         parts = message.caption.split(maxsplit=1)
         code = parts[0]
         title = parts[1] if len(parts) > 1 else "Solo Leveling"
@@ -122,7 +132,7 @@ async def save_video(message: types.Message):
         conn.commit()
         cursor.close()
         conn.close()
-        await message.reply(f"✅ Baza abadiy saqladi!\nKod: {code}")
+        await message.reply(f"✅ Baza abadiy saqladi!\nKod: {code}\nNomi: {title}")
 
 async def main():
     init_db()
