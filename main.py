@@ -8,16 +8,17 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 
 # --- SOZLAMALAR ---
 API_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = 8203513150  # Sizning ID-ingiz
+# ADMIN_ID ni o'zingizniki bilan tekshiring
+ADMIN_ID = 8203513150  
 
-# BU YERNI O'ZINGIZNIKI BILAN ALMASHTIRING:
-CHANNEL_ID = "@My_AnimeChannel"  # Kanalingiz yuzernami
-BOT_USER = "SoloLevelingUzBot"   # Botingiz yuzernami (@ belgisiz)
+# KANAL VA BOT LINKLARI
+CHANNEL_ID = "@My_AnimeChannel" 
+BOT_USER = "SoloLevelingUzBot"
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# --- BAZA BILAN ISHLASH ---
+# --- BAZA ---
 def init_db():
     conn = sqlite3.connect("movies.db")
     cursor = conn.cursor()
@@ -33,16 +34,13 @@ def get_movie(code):
         res = cursor.fetchone()
         conn.close()
         return res[0] if res else None
-    except Exception:
+    except:
         return None
 
-# --- ASOSIY MENYULAR ---
+# --- MENYULAR ---
 def get_main_menu():
-    kb = [
-        [KeyboardButton(text="1-FASL"), KeyboardButton(text="2-FASL")],
-        [KeyboardButton(text="3-FASL")],
-        [KeyboardButton(text="📢 Kanalimiz")]
-    ]
+    kb = [[KeyboardButton(text="1-FASL"), KeyboardButton(text="2-FASL")],
+          [KeyboardButton(text="3-FASL")], [KeyboardButton(text="📢 Kanalimiz")]]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
 def get_parts_menu(season_num, total_parts):
@@ -57,7 +55,7 @@ def get_parts_menu(season_num, total_parts):
     buttons.append([KeyboardButton(text="⬅️ Orqaga")])
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
 
-# --- START BUYRUG'I ---
+# --- BUYRUQLAR ---
 @dp.message(Command("start"))
 async def start_command(message: types.Message, command: CommandObject):
     if command.args == "season1":
@@ -65,6 +63,39 @@ async def start_command(message: types.Message, command: CommandObject):
     else:
         await message.answer("🎬 Salom! Kerakli faslni tanlang 👇", reply_markup=get_main_menu())
 
-# --- ADMIN: KANALGA TUGMALI RASM YUBORISH ---
-@dp.message(F.photo & (F.from_user.id == ADMIN_ID))
-async def admin
+# --- VIDEO YUBORISH ---
+@dp.message(F.text.contains("-fasl") & F.text.contains("-qism"))
+async def send_video_part(message: types.Message):
+    numbers = re.findall(r'\d+', message.text)
+    if len(numbers) >= 2:
+        season, part = numbers[0], numbers[1]
+        search_code = f"{season}_{part}"
+        file_id = get_movie(search_code)
+        
+        if file_id:
+            try:
+                await bot.send_video(chat_id=message.chat.id, video=file_id, 
+                                     caption=f"🎬 1-fasl {part}-qism\n\n@My_AnimeChannel")
+            except Exception as e:
+                await message.answer(f"❌ Xato: {e}")
+        else:
+            await message.answer(f"⚠️ Bu qism bazada yo'q. (Kod: {search_code})")
+
+# --- ADMIN: VIDEO SAQLASH ---
+@dp.message(F.video & (F.from_user.id == ADMIN_ID))
+async def add_video(message: types.Message):
+    if message.caption:
+        code = message.caption.strip()
+        conn = sqlite3.connect("movies.db")
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR REPLACE INTO movies VALUES (?, ?)", (code, message.video.file_id))
+        conn.commit()
+        conn.close()
+        await message.reply(f"✅ Saqlandi! Kod: {code}")
+
+async def main():
+    init_db()
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
