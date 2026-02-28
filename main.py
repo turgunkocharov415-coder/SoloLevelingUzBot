@@ -3,20 +3,18 @@ import asyncio
 import sqlite3
 import re
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import CommandObject, Command
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.filters import Command
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 # --- SOZLAMALAR ---
 API_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = 8203513150  # O'z ID-ingizni tekshiring
-
-CHANNEL_ID = "@My_AnimeChannel" 
-BOT_USER = "SoloLevelingUzBot"
+ADMIN_ID = 8203513150  # Sizning ID-ingiz
+CHANNEL_ID = "@My_AnimeChannel" # O'zingizniki bilan almashtiring
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# --- BAZA ---
+# --- BAZA FUNKSIYALARI ---
 def init_db():
     conn = sqlite3.connect("movies.db")
     cursor = conn.cursor()
@@ -25,15 +23,12 @@ def init_db():
     conn.close()
 
 def get_movie(code):
-    try:
-        conn = sqlite3.connect("movies.db")
-        cursor = conn.cursor()
-        cursor.execute("SELECT file_id FROM movies WHERE code = ?", (code,))
-        res = cursor.fetchone()
-        conn.close()
-        return res[0] if res else None
-    except:
-        return None
+    conn = sqlite3.connect("movies.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT file_id FROM movies WHERE code = ?", (code,))
+    res = cursor.fetchone()
+    conn.close()
+    return res[0] if res else None
 
 # --- MENYULAR ---
 def get_main_menu():
@@ -56,43 +51,32 @@ def get_parts_menu(season_num, total_parts):
     buttons.append([KeyboardButton(text="⬅️ Orqaga")])
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
 
-# --- START BUYRUG'I ---
+# --- XABARLAR VA TUGMALAR ---
 @dp.message(Command("start"))
-async def start_command(message: types.Message, command: CommandObject):
+async def start_command(message: types.Message):
     await message.answer("🎬 Salom! Kerakli faslni tanlang 👇", reply_markup=get_main_menu())
 
-# --- FASLNI TANLASH (Tugmalar yo'qolib qolmasligi uchun) ---
 @dp.message(F.text.in_(["1-FASL", "2-FASL", "3-FASL"]))
 async def show_parts(message: types.Message):
-    # Faqat raqamni ajratib olish (1, 2 yoki 3)
+    # Bu yerda tugma bosilganda qismlar ro'yxati chiqishi ta'minlanadi
     season = "".join(filter(str.isdigit, message.text))
-    # Har bir fasl uchun 10 tadan qism (misol uchun)
     await message.answer(f"✨ {season}-fasl qismlarini tanlang:", reply_markup=get_parts_menu(season, 10))
 
-# --- ORQAGA QAYTISH ---
 @dp.message(F.text == "⬅️ Orqaga")
 async def back_to_main(message: types.Message):
     await message.answer("Asosiy menyu:", reply_markup=get_main_menu())
 
-# --- VIDEO YUBORISH ---
 @dp.message(F.text.contains("-fasl") & F.text.contains("-qism"))
 async def send_video_part(message: types.Message):
     numbers = re.findall(r'\d+', message.text)
     if len(numbers) >= 2:
-        season, part = numbers[0], numbers[1]
-        search_code = f"{season}_{part}"
+        search_code = f"{numbers[0]}_{numbers[1]}"
         file_id = get_movie(search_code)
-        
         if file_id:
-            try:
-                await bot.send_video(chat_id=message.chat.id, video=file_id, 
-                                     caption=f"🎬 {season}-fasl {part}-qism\n\n{CHANNEL_ID}")
-            except Exception as e:
-                await message.answer(f"❌ Xato: {e}")
+            await message.answer_video(video=file_id, caption=f"🎞 {numbers[0]}-fasl {numbers[1]}-qism\n\n{CHANNEL_ID}")
         else:
-            await message.answer(f"⚠️ Bu qism hali yuklanmagan yoki bazada yo'q. (Kod: {search_code})")
+            await message.answer(f"⚠️ Bu qism yuklanmagan. (Kod: {search_code})")
 
-# --- ADMIN: VIDEO SAQLASH ---
 @dp.message(F.video & (F.from_user.id == ADMIN_ID))
 async def add_video(message: types.Message):
     if message.caption:
