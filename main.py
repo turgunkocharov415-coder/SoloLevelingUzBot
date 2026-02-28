@@ -1,6 +1,6 @@
 import os
 import asyncio
-import sqlite3
+import psycopg2
 import re
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
@@ -8,27 +8,49 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 # --- SOZLAMALAR ---
 API_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = 8203513150  # Sizning ID-ingiz
-CHANNEL_ID = "@My_AnimeChannel" # O'zingizniki bilan almashtiring
+DATABASE_URL = os.getenv("DATABASE_URL")
+ADMIN_ID = 8203513150  
+CHANNEL_ID = "@My_AnimeChannel" 
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# --- BAZA FUNKSIYALARI ---
+# --- BAZA BILAN ISHLASH ---
+def get_db_connection():
+    return psycopg2.connect(DATABASE_URL, sslmode='require')
+
 def init_db():
-    conn = sqlite3.connect("movies.db")
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("CREATE TABLE IF NOT EXISTS movies (code TEXT PRIMARY KEY, file_id TEXT)")
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS movies (
+            code TEXT PRIMARY KEY, 
+            file_id TEXT, 
+            title TEXT
+        )
+    """)
     conn.commit()
+    cursor.close()
     conn.close()
 
-def get_movie(code):
-    conn = sqlite3.connect("movies.db")
+def get_uploaded_parts(season_num):
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT file_id FROM movies WHERE code = ?", (code,))
-    res = cursor.fetchone()
+    cursor.execute("SELECT code FROM movies WHERE code LIKE %s", (f"{season_num}_%",))
+    codes = cursor.fetchall()
+    cursor.close()
     conn.close()
-    return res[0] if res else None
+    parts = [int(c[0].split('_')[1]) for c in codes if '_' in c[0]]
+    return sorted(parts)
+
+def get_movie_data(code):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT file_id, title FROM movies WHERE code = %s", (code,))
+    res = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return res if res else (None, None)
 
 # --- MENYULAR ---
 def get_main_menu():
@@ -39,11 +61,15 @@ def get_main_menu():
     ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
-def get_parts_menu(season_num, total_parts):
+def get_dynamic_menu(season_num):
+    parts = get_uploaded_parts(season_num)
+    if not parts:
+        return None
+    
     buttons = []
     row = []
-    for i in range(1, total_parts + 1):
-        row.append(KeyboardButton(text=f"{season_num}-fasl {i}-qism"))
+    for p in parts:
+        row.append(KeyboardButton(text=f"{season_num}-fasl {p}-qism"))
         if len(row) == 3:
             buttons.append(row)
             row = []
@@ -51,42 +77,52 @@ def get_parts_menu(season_num, total_parts):
     buttons.append([KeyboardButton(text="⬅️ Orqaga")])
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
 
-# --- XABARLAR VA TUGMALAR ---
+# --- BOT FUNKSIYALARI ---
 @dp.message(Command("start"))
-async def start_command(message: types.Message):
+async def cmd_start(message: types.Message):
     await message.answer("🎬 Salom! Kerakli faslni tanlang 👇", reply_markup=get_main_menu())
 
 @dp.message(F.text.in_(["1-FASL", "2-FASL", "3-FASL"]))
-async def show_parts(message: types.Message):
-    # Bu yerda tugma bosilganda qismlar ro'yxati chiqishi ta'minlanadi
+async def show_season(message: types.Message):
     season = "".join(filter(str.isdigit, message.text))
-    await message.answer(f"✨ {season}-fasl qismlarini tanlang:", reply_markup=get_parts_menu(season, 10))
+    menu = get_dynamic_menu(season)
+    if menu:
+        await message.answer(f"✨ {season}-fasldagi yuklangan qismlar:", reply_markup=menu)
+    else:
+        await message.answer(f"⚠️ {season}-fasl uchun hali hech narsa yuklanmagan.")
 
 @dp.message(F.text == "⬅️ Orqaga")
-async def back_to_main(message: types.Message):
+async def go_back(message: types.Message):
     await message.answer("Asosiy menyu:", reply_markup=get_main_menu())
 
 @dp.message(F.text.contains("-fasl") & F.text.contains("-qism"))
-async def send_video_part(message: types.Message):
-    numbers = re.findall(r'\d+', message.text)
-    if len(numbers) >= 2:
-        search_code = f"{numbers[0]}_{numbers[1]}"
-        file_id = get_movie(search_code)
-        if file_id:
-            await message.answer_video(video=file_id, caption=f"🎞 {numbers[0]}-fasl {numbers[1]}-qism\n\n{CHANNEL_ID}")
-        else:
-            await message.answer(f"⚠️ Bu qism yuklanmagan. (Kod: {search_code})")
+async def send_video(message: types.Message):
+    nums = re.findall(r'\d+', message.text)
+    if len(nums) >= 2:
+        code = f"{nums[0]}_{nums[1]}"
+        f_id, title = get_movie_data(code)
+        if f_id:
+            cap = f"🎬 **BAKI HANMA:** {title}\n🎞 **{nums[0]}-fasl {nums[1]}-qism**\n\n{CHANNEL_ID}"
+            await message.answer_video(video=f_id, caption=cap, parse_mode="Markdown")
 
 @dp.message(F.video & (F.from_user.id == ADMIN_ID))
-async def add_video(message: types.Message):
+async def save_video(message: types.Message):
     if message.caption:
-        code = message.caption.strip()
-        conn = sqlite3.connect("movies.db")
+        parts = message.caption.split(maxsplit=1)
+        code = parts[0]
+        title = parts[1] if len(parts) > 1 else "Solo Leveling"
+        
+        conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("INSERT OR REPLACE INTO movies VALUES (?, ?)", (code, message.video.file_id))
+        cursor.execute("""
+            INSERT INTO movies (code, file_id, title) 
+            VALUES (%s, %s, %s) 
+            ON CONFLICT (code) DO UPDATE SET file_id = EXCLUDED.file_id, title = EXCLUDED.title
+        """, (code, message.video.file_id, title))
         conn.commit()
+        cursor.close()
         conn.close()
-        await message.reply(f"✅ Saqlandi! Kod: {code}")
+        await message.reply(f"✅ Baza abadiy saqladi!\nKod: {code}")
 
 async def main():
     init_db()
