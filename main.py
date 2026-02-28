@@ -8,7 +8,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 
 # --- SOZLAMALAR ---
 API_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = 8203513150  
+ADMIN_ID = 8203513150  # O'z ID-ingizni tekshiring
 
 CHANNEL_ID = "@My_AnimeChannel" 
 BOT_USER = "SoloLevelingUzBot"
@@ -37,8 +37,11 @@ def get_movie(code):
 
 # --- MENYULAR ---
 def get_main_menu():
-    kb = [[KeyboardButton(text="1-FASL"), KeyboardButton(text="2-FASL")],
-          [KeyboardButton(text="3-FASL")], [KeyboardButton(text="📢 Kanalimiz")]]
+    kb = [
+        [KeyboardButton(text="1-FASL"), KeyboardButton(text="2-FASL")],
+        [KeyboardButton(text="3-FASL")],
+        [KeyboardButton(text="📢 Kanalimiz")]
+    ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
 def get_parts_menu(season_num, total_parts):
@@ -53,13 +56,23 @@ def get_parts_menu(season_num, total_parts):
     buttons.append([KeyboardButton(text="⬅️ Orqaga")])
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
 
-# --- BUYRUQLAR ---
+# --- START BUYRUG'I ---
 @dp.message(Command("start"))
 async def start_command(message: types.Message, command: CommandObject):
-    if command.args == "season1":
-        await message.answer("✨ 1-fasl qismlarini tanlang:", reply_markup=get_parts_menu("1", 10))
-    else:
-        await message.answer("🎬 Salom! Kerakli faslni tanlang 👇", reply_markup=get_main_menu())
+    await message.answer("🎬 Salom! Kerakli faslni tanlang 👇", reply_markup=get_main_menu())
+
+# --- FASLNI TANLASH (Tugmalar yo'qolib qolmasligi uchun) ---
+@dp.message(F.text.in_(["1-FASL", "2-FASL", "3-FASL"]))
+async def show_parts(message: types.Message):
+    # Faqat raqamni ajratib olish (1, 2 yoki 3)
+    season = "".join(filter(str.isdigit, message.text))
+    # Har bir fasl uchun 10 tadan qism (misol uchun)
+    await message.answer(f"✨ {season}-fasl qismlarini tanlang:", reply_markup=get_parts_menu(season, 10))
+
+# --- ORQAGA QAYTISH ---
+@dp.message(F.text == "⬅️ Orqaga")
+async def back_to_main(message: types.Message):
+    await message.answer("Asosiy menyu:", reply_markup=get_main_menu())
 
 # --- VIDEO YUBORISH ---
 @dp.message(F.text.contains("-fasl") & F.text.contains("-qism"))
@@ -72,12 +85,12 @@ async def send_video_part(message: types.Message):
         
         if file_id:
             try:
-                # Video yuborish
-                await message.answer_video(video=file_id, caption=f"🎬 {season}-fasl {part}-qism\n\n{CHANNEL_ID}")
+                await bot.send_video(chat_id=message.chat.id, video=file_id, 
+                                     caption=f"🎬 {season}-fasl {part}-qism\n\n{CHANNEL_ID}")
             except Exception as e:
                 await message.answer(f"❌ Xato: {e}")
         else:
-            await message.answer(f"⚠️ Bu qism bazada yo'q. (Kod: {search_code})")
+            await message.answer(f"⚠️ Bu qism hali yuklanmagan yoki bazada yo'q. (Kod: {search_code})")
 
 # --- ADMIN: VIDEO SAQLASH ---
 @dp.message(F.video & (F.from_user.id == ADMIN_ID))
