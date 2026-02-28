@@ -2,10 +2,11 @@ import os
 import asyncio
 import sqlite3
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
+# Railway Variables-dan tokenni olamiz
 API_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = 906441402 # BU YERGA O'Z ID-INGIZNI QAYTA YOZING!
+ADMIN_ID = 906441402  # BU YERGA O'Z ID-INGIZNI YOZING!
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
@@ -26,34 +27,43 @@ def get_movie(code):
     conn.close()
     return res[0] if res else None
 
-# --- TUGMALAR (KEYBOARD) ---
-def get_seasons_keyboard():
-    buttons = [
-        [InlineKeyboardButton(text="1-Fasl", callback_data="season_1"),
-         InlineKeyboardButton(text="2-Fasl", callback_data="season_2")],
-        [InlineKeyboardButton(text="3-Fasl", callback_data="season_3")],
-        [InlineKeyboardButton(text="📢 Kanalimiz", url="https://t.me/SizningKanalingiz")]
+# --- REPLY KEYBOARD (RASMDAGI KABI MENYU) ---
+def get_main_menu():
+    kb = [
+        [KeyboardButton(text="📢OVOZ KASTING")],
+        [KeyboardButton(text="1-FASL"), KeyboardButton(text="2-Fasl")],
+        [KeyboardButton(text="3-FASL"), KeyboardButton(text="4-Fasl")],
+        [KeyboardButton(text="⬅️ Orqaga"), KeyboardButton(text="⬆️ Asosiy Menyu")]
     ]
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
 # --- BUYRUQLAR ---
 @dp.message(F.text == "/start")
 async def start_command(message: types.Message):
-    await message.answer("👋 Salom! Kerakli faslni tanlang:", reply_markup=get_seasons_keyboard())
+    await message.answer(
+        "Kerakli faslni tanlang 👇", 
+        reply_markup=get_main_menu()
+    )
 
-# Tugma bosilganda ishlovchi qism
-@dp.callback_query(F.data.startswith("season_"))
-async def season_callback(callback: types.CallbackQuery):
-    season_num = callback.data.split("_")[1]
-    # Har bir fasl uchun bazaga avvaldan 'f1', 'f2', 'f3' kodli kinolarni yuklab qo'yishingiz kerak
-    file_id = get_movie(f"f{season_num}") 
+# FASLLAR BOSILGANDA ISHLOVCHI QISM
+@dp.message(F.text.in_(["1-FASL", "2-Fasl", "3-FASL", "4-Fasl"]))
+async def send_season(message: types.Message):
+    # Tugma matnini kodga aylantiramiz (masalan: "1-FASL" -> "f1")
+    code_map = {
+        "1-FASL": "f1",
+        "2-Fasl": "f2",
+        "3-FASL": "f3",
+        "4-Fasl": "f4"
+    }
+    code = code_map.get(message.text)
+    file_id = get_movie(code)
     
     if file_id:
-        await callback.message.answer_video(video=file_id, caption=f"🎬 {season_num}-fasl marhamat!")
+        await message.answer_video(video=file_id, caption=f"🎬 {message.text} marhamat!")
     else:
-        await callback.answer("⚠️ Bu fasl hali yuklanmagan!", show_alert=True)
+        await message.answer(f"⚠️ {message.text} hali bazaga yuklanmagan.")
 
-# ADMIN: Kino qo'shish
+# ADMIN: Kino qo'shish (f1, f2, f3 kodlari bilan saqlang)
 @dp.message(F.video & (F.from_user.id == ADMIN_ID))
 async def add_movie(message: types.Message):
     if message.caption:
@@ -63,7 +73,9 @@ async def add_movie(message: types.Message):
         cursor.execute("INSERT OR REPLACE INTO movies VALUES (?, ?)", (code, message.video.file_id))
         conn.commit()
         conn.close()
-        await message.reply(f"✅ Saqlandi! Kod: {code}")
+        await message.reply(f"✅ Baza yangilandi! Kod: {code}")
+    else:
+        await message.reply("⚠️ Videoni yuborishda izohiga kod (masalan: f1) yozing!")
 
 # ADMIN: O'chirish (/del kod)
 @dp.message(F.text.startswith("/del ") & (F.from_user.id == ADMIN_ID))
@@ -83,7 +95,7 @@ async def search_movie(message: types.Message):
     if file_id:
         await message.answer_video(video=file_id)
     elif not message.text.startswith("/"):
-        await message.answer("❌ Topilmadi.")
+        pass # Noto'g'ri matn yozilsa bot indamaydi
 
 async def main():
     init_db()
