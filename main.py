@@ -2,71 +2,91 @@ import os
 import asyncio
 import sqlite3
 from aiogram import Bot, Dispatcher, types, F
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# Railway Variables-dan tokenni olamiz
 API_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = 8203513150 # Sizning ID-ingiz
+ADMIN_ID = 906441402 # BU YERGA O'Z ID-INGIZNI QAYTA YOZING!
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-# --- MA'LUMOTLAR BAZASI BILAN ISHLASH ---
+# --- BAZA FUNKSIYALARI ---
 def init_db():
     conn = sqlite3.connect("movies.db")
     cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS movies (
-            code TEXT PRIMARY KEY,
-            file_id TEXT
-        )
-    """)
+    cursor.execute("CREATE TABLE IF NOT EXISTS movies (code TEXT PRIMARY KEY, file_id TEXT)")
     conn.commit()
     conn.close()
 
-def add_movie_to_db(code, file_id):
-    conn = sqlite3.connect("movies.db")
-    cursor = conn.cursor()
-    cursor.execute("INSERT OR REPLACE INTO movies (code, file_id) VALUES (?, ?)", (code, file_id))
-    conn.commit()
-    conn.close()
-
-def get_movie_from_db(code):
+def get_movie(code):
     conn = sqlite3.connect("movies.db")
     cursor = conn.cursor()
     cursor.execute("SELECT file_id FROM movies WHERE code = ?", (code,))
-    result = cursor.fetchone()
+    res = cursor.fetchone()
     conn.close()
-    return result[0] if result else None
-# ---------------------------------------
+    return res[0] if res else None
 
+# --- TUGMALAR (KEYBOARD) ---
+def get_seasons_keyboard():
+    buttons = [
+        [InlineKeyboardButton(text="1-Fasl", callback_data="season_1"),
+         InlineKeyboardButton(text="2-Fasl", callback_data="season_2")],
+        [InlineKeyboardButton(text="3-Fasl", callback_data="season_3")],
+        [InlineKeyboardButton(text="📢 Kanalimiz", url="https://t.me/SizningKanalingiz")]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+# --- BUYRUQLAR ---
 @dp.message(F.text == "/start")
 async def start_command(message: types.Message):
-    await message.answer("🎬 Salom! Kino kodini yuboring, men sizga kinoni topib beraman!")
+    await message.answer("👋 Salom! Kerakli faslni tanlang:", reply_markup=get_seasons_keyboard())
 
-# ADMIN UCHUN: Kino qo'shish
-@dp.message(F.video & (F.from_user.id == ADMIN_ID))
-async def add_movie_handler(message: types.Message):
-    if message.caption:
-        code = message.caption.strip()
-        add_movie_to_db(code, message.video.file_id)
-        await message.reply(f"✅ Baza yangilandi! Kino kodi: **{code}**\nEndi bot o'chsa ham bu kino o'chib ketmaydi.")
-    else:
-        await message.reply("⚠️ Videoni yuborishda izoh (caption) qismiga kod yozishni unutdingiz!")
-
-# FOYDALANUVCHILAR UCHUN: Kino topish
-@dp.message(F.text)
-async def get_movie_handler(message: types.Message):
-    code = message.text.strip()
-    file_id = get_movie_from_db(code)
+# Tugma bosilganda ishlovchi qism
+@dp.callback_query(F.data.startswith("season_"))
+async def season_callback(callback: types.CallbackQuery):
+    season_num = callback.data.split("_")[1]
+    # Har bir fasl uchun bazaga avvaldan 'f1', 'f2', 'f3' kodli kinolarni yuklab qo'yishingiz kerak
+    file_id = get_movie(f"f{season_num}") 
     
     if file_id:
-        await bot.send_video(chat_id=message.chat.id, video=file_id, caption=f"🎬 Kino kodi: {code}")
-    elif not code.startswith('/'):
-        await message.answer("❌ Bu kod bilan kino topilmadi.")
+        await callback.message.answer_video(video=file_id, caption=f"🎬 {season_num}-fasl marhamat!")
+    else:
+        await callback.answer("⚠️ Bu fasl hali yuklanmagan!", show_alert=True)
+
+# ADMIN: Kino qo'shish
+@dp.message(F.video & (F.from_user.id == ADMIN_ID))
+async def add_movie(message: types.Message):
+    if message.caption:
+        code = message.caption.strip()
+        conn = sqlite3.connect("movies.db")
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR REPLACE INTO movies VALUES (?, ?)", (code, message.video.file_id))
+        conn.commit()
+        conn.close()
+        await message.reply(f"✅ Saqlandi! Kod: {code}")
+
+# ADMIN: O'chirish (/del kod)
+@dp.message(F.text.startswith("/del ") & (F.from_user.id == ADMIN_ID))
+async def delete_movie(message: types.Message):
+    code = message.text.split(" ")[1]
+    conn = sqlite3.connect("movies.db")
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM movies WHERE code = ?", (code,))
+    conn.commit()
+    conn.close()
+    await message.reply(f"🗑 {code} o'chirildi.")
+
+# FOYDALANUVCHI: Kod orqali qidirish
+@dp.message(F.text)
+async def search_movie(message: types.Message):
+    file_id = get_movie(message.text.strip())
+    if file_id:
+        await message.answer_video(video=file_id)
+    elif not message.text.startswith("/"):
+        await message.answer("❌ Topilmadi.")
 
 async def main():
-    init_db() # Bot yoqilganda baza yaratiladi
-    print("Bot SQLite bilan ishga tushdi...")
+    init_db()
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
