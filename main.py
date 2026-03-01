@@ -7,7 +7,6 @@ from aiogram.filters import Command
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
 # --- SOZLAMALAR ---
-# Railway-dagi o'zgaruvchilarni olish
 API_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 ADMIN_ID = 8203513150  
@@ -18,7 +17,6 @@ dp = Dispatcher()
 
 # --- BAZA BILAN ISHLASH ---
 def get_db_connection():
-    # SSL rejimi Railway-da ishlash uchun muhim
     return psycopg2.connect(DATABASE_URL, sslmode='require')
 
 def init_db():
@@ -35,6 +33,15 @@ def init_db():
     cursor.close()
     conn.close()
 
+def get_movie_data(code):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT file_id, title FROM movies WHERE code = %s", (code,))
+    res = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    return res if res else (None, None)
+
 def get_uploaded_parts(season_num):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -49,18 +56,8 @@ def get_uploaded_parts(season_num):
         except: continue
     return sorted(list(set(parts)))
 
-def get_movie_data(code):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT file_id, title FROM movies WHERE code = %s", (code,))
-    res = cursor.fetchone()
-    cursor.close()
-    conn.close()
-    return res if res else (None, None)
-
 # --- MENYULAR ---
 def get_main_menu():
-    # Asosiy menyu tugmalari
     kb = [
         [KeyboardButton(text="1-FASL"), KeyboardButton(text="2-FASL")],
         [KeyboardButton(text="3-FASL")],
@@ -71,7 +68,6 @@ def get_main_menu():
 def get_inline_menu(season_num):
     parts = get_uploaded_parts(season_num)
     if not parts: return None
-    
     keyboard = []
     row = []
     for p in parts:
@@ -84,8 +80,26 @@ def get_inline_menu(season_num):
 
 # --- BOT LOGIKASI ---
 
+# KANALDAN TUGMA ORQALI KIRGANDA ISHLAYDIGAN QISM
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
+    # Havoladan kelgan argumentni tekshirish (/start 1_1)
+    args = message.text.split()
+    if len(args) > 1:
+        code = args[1]
+        f_id, title = get_movie_data(code)
+        
+        if f_id:
+            nums = code.split("_")
+            cap = f"<b>🎬 Anime:</b> {title}\n<b>🎞 {nums[0]}-fasl {nums[1]}-qism</b>\n\n{CHANNEL_ID}"
+            try:
+                await message.answer_video(video=f_id, caption=cap, parse_mode="HTML")
+                return # Kinoni yuborgach, pastdagi menyu chiqmaydi
+            except Exception:
+                await message.answer_video(video=f_id, caption=f"🎬 {title}\n🎞 {nums[0]}-fasl {nums[1]}-qism")
+                return
+
+    # Agar shunchaki /start yozilsa yoki kod xato bo'lsa
     await message.answer("🎬 Salom! Kerakli faslni tanlang 👇", reply_markup=get_main_menu())
 
 @dp.message(F.text.in_(["1-FASL", "2-FASL", "3-FASL"]))
@@ -97,59 +111,46 @@ async def show_season(message: types.Message):
     else:
         await message.answer(f"⚠️ {season}-fasl uchun hali video yuklanmagan.")
 
-# --- KANALIMIZ TUGMASI ---
 @dp.message(F.text == "📢 Kanalimiz")
 async def open_channel(message: types.Message):
-    # Bu tugma bosilganda foydalanuvchiga kanal linkini yuboradi
     url = f"https://t.me/{CHANNEL_ID.replace('@', '')}"
     inline_kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Obuna bo'lish 🚀", url=url)]
     ])
-    await message.answer(f"<b>{CHANNEL_ID}</b> kanalimizga obuna bo'ling!", 
-                         reply_markup=inline_kb, parse_mode="HTML")
+    await message.answer(f"<b>{CHANNEL_ID}</b> kanalimizga xush kelibsiz!", reply_markup=inline_kb, parse_mode="HTML")
 
-# --- KINONI CHIQARISH (XATOLIKLAR TUZATILGAN) ---
 @dp.callback_query(F.data.startswith("get_"))
-async def send_movie(callback: types.CallbackQuery):
+async def send_movie_callback(callback: types.CallbackQuery):
     code = callback.data.replace("get_", "")
     f_id, title = get_movie_data(code)
-    
     if f_id:
         nums = code.split("_")
-        # HTML format 'can't parse' xatosini oldini oladi
         cap = f"<b>🎬 Anime:</b> {title}\n<b>🎞 {nums[0]}-fasl {nums[1]}-qism</b>\n\n{CHANNEL_ID}"
         try:
             await callback.message.answer_video(video=f_id, caption=cap, parse_mode="HTML")
         except Exception:
-            # Agar HTMLda muammo bo'lsa, oddiy matn bilan yuboradi
-            await callback.message.answer_video(video=f_id, caption=f"🎬 Anime: {title}\n🎞 {nums[0]}-fasl {nums[1]}-qism\n\n{CHANNEL_ID}")
+            await callback.message.answer_video(video=f_id, caption=f"🎬 {title}\n🎞 {nums[0]}-fasl {nums[1]}-qism")
         await callback.answer()
     else:
         await callback.answer("⚠️ Video topilmadi!", show_alert=True)
 
-# --- ADMIN PANEL: VIDEO YUKLASH ---
 @dp.message(F.video & (F.from_user.id == ADMIN_ID))
 async def save_video(message: types.Message):
     if message.caption:
-        # Yuklash formati: "1_1 Baki Hanma"
         parts = message.caption.split(maxsplit=1)
         code = parts[0]
         title = parts[1] if len(parts) > 1 else "Kino"
-        
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO movies (code, file_id, title) 
-                VALUES (%s, %s, %s) 
-                ON CONFLICT (code) DO UPDATE SET file_id = EXCLUDED.file_id, title = EXCLUDED.title
-            """, (code, message.video.file_id, title))
-            conn.commit()
-            cursor.close()
-            conn.close()
-            await message.reply(f"✅ Baza muvaffaqiyatli saqladi! Kod: {code}")
-        except Exception as e:
-            await message.reply(f"❌ Bazaga yozishda xato: {e}")
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO movies (code, file_id, title) 
+            VALUES (%s, %s, %s) 
+            ON CONFLICT (code) DO UPDATE SET file_id = EXCLUDED.file_id, title = EXCLUDED.title
+        """, (code, message.video.file_id, title))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        await message.reply(f"✅ Saqlandi! Kod: {code}")
 
 async def main():
     init_db()
