@@ -72,7 +72,7 @@ def get_dynamic_menu(season_num):
     buttons = []
     row = []
     for p in parts:
-        # Tugma matni aniq formatda
+        # Tugmani emoji bilan yasaymiz
         row.append(KeyboardButton(text=f"🎬 {season_num}-fasl {p}-qism"))
         if len(row) == 2:
             buttons.append(row)
@@ -100,12 +100,11 @@ async def go_back(message: types.Message):
     await message.answer("Asosiy menyu:", reply_markup=get_main_menu())
 
 # --- MUHIM: TUGMANI BOSGANDA KINONI CHIQARISH ---
-@dp.message(F.text.contains("-fasl") & F.text.contains("-qism"))
+@dp.message(F.text.regexp(r'.*\d+-fasl \d+-qism.*'))
 async def send_video(message: types.Message):
-    # Matndan hamma raqamlarni ajratib olamiz
+    # Matndan raqamlarni ajratish (🎬 1-fasl 1-qism -> ['1', '1'])
     nums = re.findall(r'\d+', message.text)
     if len(nums) >= 2:
-        # Kodni yasaymiz (1_1)
         code = f"{nums[0]}_{nums[1]}"
         f_id, title = get_movie_data(code)
         
@@ -113,14 +112,15 @@ async def send_video(message: types.Message):
             cap = f"🎬 **Anime:** {title}\n🎞 **{nums[0]}-fasl {nums[1]}-qism**\n\n{CHANNEL_ID}"
             await message.answer_video(video=f_id, caption=cap, parse_mode="Markdown")
         else:
-            await message.answer(f"❌ Xatolik: Baza ichidan '{code}' kodi topilmadi.")
+            await message.answer(f"⚠️ Baza ichidan '{code}' kodi topilmadi. Qayta yuklang.")
 
 @dp.message(F.video & (F.from_user.id == ADMIN_ID))
 async def save_video(message: types.Message):
     if message.caption:
+        # Format: "1_1 Baki Hanma"
         parts = message.caption.split(maxsplit=1)
         code = parts[0]
-        title = parts[1] if len(parts) > 1 else "Noma'lum"
+        title = parts[1] if len(parts) > 1 else "Solo Leveling"
         
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -133,10 +133,3 @@ async def save_video(message: types.Message):
         cursor.close()
         conn.close()
         await message.reply(f"✅ Baza abadiy saqladi!\nKod: {code}\nNomi: {title}")
-
-async def main():
-    init_db()
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
