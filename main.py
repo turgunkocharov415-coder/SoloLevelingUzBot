@@ -80,26 +80,34 @@ def get_inline_menu(season_num):
 
 # --- BOT LOGIKASI ---
 
-# KANALDAN TUGMA ORQALI KIRGANDA ISHLAYDIGAN QISM
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    # Havoladan kelgan argumentni tekshirish (/start 1_1)
     args = message.text.split()
+    
+    # AGAR KANALDA TAGIDAGI TUGMA BOSILSA (Masalan: /start 1)
     if len(args) > 1:
-        code = args[1]
-        f_id, title = get_movie_data(code)
+        param = args[1]
         
-        if f_id:
-            nums = code.split("_")
-            cap = f"<b>🎬 Anime:</b> {title}\n<b>🎞 {nums[0]}-fasl {nums[1]}-qism</b>\n\n{CHANNEL_ID}"
-            try:
+        # 1. Agar parametrda tagchiziq bo'lsa (1_1 ko'rinishida), to'g'ridan-to'g'ri videoni yuboradi
+        if "_" in param:
+            f_id, title = get_movie_data(param)
+            if f_id:
+                nums = param.split("_")
+                cap = f"<b>🎬 Anime:</b> {title}\n<b>🎞 {nums[0]}-fasl {nums[1]}-qism</b>\n\n{CHANNEL_ID}"
                 await message.answer_video(video=f_id, caption=cap, parse_mode="HTML")
-                return # Kinoni yuborgach, pastdagi menyu chiqmaydi
-            except Exception:
-                await message.answer_video(video=f_id, caption=f"🎬 {title}\n🎞 {nums[0]}-fasl {nums[1]}-qism")
                 return
 
-    # Agar shunchaki /start yozilsa yoki kod xato bo'lsa
+        # 2. Agar parametr faqat raqam bo'lsa (Fasl raqami: 1, 2 yoki 3), o'sha fasl qismlarini chiqaradi
+        if param.isdigit():
+            menu = get_inline_menu(param)
+            if menu:
+                await message.answer(f"✨ {param}-fasl qismlari yuklangan. Tanlang:", reply_markup=menu)
+                return
+            else:
+                await message.answer(f"⚠️ {param}-fasl uchun hali hech qanday qism yuklanmagan.")
+                return
+
+    # ODDIY /START BOSILSA
     await message.answer("🎬 Salom! Kerakli faslni tanlang 👇", reply_markup=get_main_menu())
 
 @dp.message(F.text.in_(["1-FASL", "2-FASL", "3-FASL"]))
@@ -126,10 +134,7 @@ async def send_movie_callback(callback: types.CallbackQuery):
     if f_id:
         nums = code.split("_")
         cap = f"<b>🎬 Anime:</b> {title}\n<b>🎞 {nums[0]}-fasl {nums[1]}-qism</b>\n\n{CHANNEL_ID}"
-        try:
-            await callback.message.answer_video(video=f_id, caption=cap, parse_mode="HTML")
-        except Exception:
-            await callback.message.answer_video(video=f_id, caption=f"🎬 {title}\n🎞 {nums[0]}-fasl {nums[1]}-qism")
+        await callback.message.answer_video(video=f_id, caption=cap, parse_mode="HTML")
         await callback.answer()
     else:
         await callback.answer("⚠️ Video topilmadi!", show_alert=True)
