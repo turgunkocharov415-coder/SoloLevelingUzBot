@@ -4,7 +4,7 @@ import psycopg2
 import re
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
 # --- SOZLAMALAR ---
 API_TOKEN = os.getenv("BOT_TOKEN")
@@ -65,58 +65,54 @@ def get_main_menu():
     ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
-def get_dynamic_menu(season_num):
+# Eng muhim o'zgarish: Inline tugmalar orqali aniq kod yuborish
+def get_inline_menu(season_num):
     parts = get_uploaded_parts(season_num)
     if not parts: return None
     
-    buttons = []
+    keyboard = []
     row = []
     for p in parts:
-        # Emojisiz oddiy matn qidiruv oson bo'lishi uchun
-        row.append(KeyboardButton(text=f"{season_num}-fasl {p}-qism"))
-        if len(row) == 2:
-            buttons.append(row)
+        # Tugma matni chiroyli, lekin orqasidagi 'callback_data' aniq (masalan: "get_1_1")
+        row.append(InlineKeyboardButton(text=f"🎬 {p}-qism", callback_data=f"get_{season_num}_{p}"))
+        if len(row) == 3:
+            keyboard.append(row)
             row = []
-    if row: buttons.append(row)
-    buttons.append([KeyboardButton(text="⬅️ Orqaga")])
-    return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
+    if row: keyboard.append(row)
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
-# --- BOT BUYRUQLARI ---
+# --- BOT LOGIKASI ---
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    await message.answer("Salom! Kerakli faslni tanlang 👇", reply_markup=get_main_menu())
+    await message.answer("🎬 Salom! Kerakli faslni tanlang 👇", reply_markup=get_main_menu())
 
 @dp.message(F.text.in_(["1-FASL", "2-FASL", "3-FASL"]))
 async def show_season(message: types.Message):
     season = "".join(filter(str.isdigit, message.text))
-    menu = get_dynamic_menu(season)
+    menu = get_inline_menu(season)
     if menu:
-        await message.answer(f"{season}-fasldagi yuklangan qismlar:", reply_markup=menu)
+        await message.answer(f"✨ {season}-fasl qismlari:", reply_markup=menu)
     else:
-        await message.answer(f"⚠️ {season}-fasl uchun hali hech narsa yuklanmagan.")
+        await message.answer(f"⚠️ {season}-fasl uchun hali video yuklanmagan.")
 
-@dp.message(F.text == "⬅️ Orqaga")
-async def go_back(message: types.Message):
-    await message.answer("Asosiy menyu:", reply_markup=get_main_menu())
-
-# --- KINONI CHIQARISH ---
-@dp.message(F.text.regexp(r'\d+-fasl \d+-qism'))
-async def send_video(message: types.Message):
-    # Raqamlarni ajratish
-    nums = re.findall(r'\d+', message.text)
-    if len(nums) >= 2:
-        code = f"{nums[0]}_{nums[1]}"
-        f_id, title = get_movie_data(code)
-        
-        if f_id:
-            cap = f"🎬 **Anime:** {title}\n🎞 **{nums[0]}-fasl {nums[1]}-qism**\n\n{CHANNEL_ID}"
-            await message.answer_video(video=f_id, caption=cap, parse_mode="Markdown")
-        else:
-            await message.answer(f"⚠️ Baza ichidan '{code}' kodi topilmadi.")
+# Inline tugma bosilganda videoni yuborish
+@dp.callback_query(F.data.startswith("get_"))
+async def send_movie(callback: types.CallbackQuery):
+    code = callback.data.replace("get_", "") # "get_1_1" -> "1_1"
+    f_id, title = get_movie_data(code)
+    
+    if f_id:
+        nums = code.split("_")
+        cap = f"🎬 **Anime:** {title}\n🎞 **{nums[0]}-fasl {nums[1]}-qism**\n\n{CHANNEL_ID}"
+        await callback.message.answer_video(video=f_id, caption=cap, parse_mode="Markdown")
+        await callback.answer()
+    else:
+        await callback.answer("⚠️ Video topilmadi!", show_alert=True)
 
 @dp.message(F.video & (F.from_user.id == ADMIN_ID))
 async def save_video(message: types.Message):
     if message.caption:
+        # Yuklash: "1_1 Solo Leveling"
         parts = message.caption.split(maxsplit=1)
         code = parts[0]
         title = parts[1] if len(parts) > 1 else "Solo Leveling"
@@ -131,7 +127,7 @@ async def save_video(message: types.Message):
         conn.commit()
         cursor.close()
         conn.close()
-        await message.reply(f"✅ Saqlandi! Kod: {code}")
+        await message.reply(f"✅ Saqlandi!\nKod: {code}\nNomi: {title}")
 
 async def main():
     init_db()
