@@ -72,7 +72,6 @@ def get_dynamic_menu(season_num):
     buttons = []
     row = []
     for p in parts:
-        # Tugmani emoji bilan yasaymiz
         row.append(KeyboardButton(text=f"🎬 {season_num}-fasl {p}-qism"))
         if len(row) == 2:
             buttons.append(row)
@@ -99,13 +98,13 @@ async def show_season(message: types.Message):
 async def go_back(message: types.Message):
     await message.answer("Asosiy menyu:", reply_markup=get_main_menu())
 
-# --- MUHIM: TUGMANI BOSGANDA KINONI CHIQARISH ---
+# --- ASOSIY TUZATISH: TUGMANI BOSGANDA KINONI CHIQARISH ---
 @dp.message(F.text.regexp(r'.*\d+-fasl \d+-qism.*'))
 async def send_video(message: types.Message):
-    # Matndan raqamlarni ajratish (🎬 1-fasl 1-qism -> ['1', '1'])
+    # Tugma matnidan raqamlarni ajratib olamiz: "🎬 1-fasl 1-qism" -> ['1', '1']
     nums = re.findall(r'\d+', message.text)
     if len(nums) >= 2:
-        code = f"{nums[0]}_{nums[1]}"
+        code = f"{nums[0]}_{nums[1]}" # Kod: 1_1
         f_id, title = get_movie_data(code)
         
         if f_id:
@@ -117,7 +116,6 @@ async def send_video(message: types.Message):
 @dp.message(F.video & (F.from_user.id == ADMIN_ID))
 async def save_video(message: types.Message):
     if message.caption:
-        # Format: "1_1 Baki Hanma"
         parts = message.caption.split(maxsplit=1)
         code = parts[0]
         title = parts[1] if len(parts) > 1 else "Solo Leveling"
@@ -133,3 +131,10 @@ async def save_video(message: types.Message):
         cursor.close()
         conn.close()
         await message.reply(f"✅ Baza abadiy saqladi!\nKod: {code}\nNomi: {title}")
+
+async def main():
+    init_db()
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
