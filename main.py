@@ -72,7 +72,8 @@ def get_dynamic_menu(season_num):
     buttons = []
     row = []
     for p in parts:
-        row.append(KeyboardButton(text=f"🎬 {season_num}-fasl {p}-qism"))
+        # Emojisiz oddiy matn qidiruv oson bo'lishi uchun
+        row.append(KeyboardButton(text=f"{season_num}-fasl {p}-qism"))
         if len(row) == 2:
             buttons.append(row)
             row = []
@@ -83,14 +84,14 @@ def get_dynamic_menu(season_num):
 # --- BOT BUYRUQLARI ---
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    await message.answer("🎬 Salom! Kerakli faslni tanlang 👇", reply_markup=get_main_menu())
+    await message.answer("Salom! Kerakli faslni tanlang 👇", reply_markup=get_main_menu())
 
 @dp.message(F.text.in_(["1-FASL", "2-FASL", "3-FASL"]))
 async def show_season(message: types.Message):
     season = "".join(filter(str.isdigit, message.text))
     menu = get_dynamic_menu(season)
     if menu:
-        await message.answer(f"✨ {season}-fasldagi yuklangan qismlar:", reply_markup=menu)
+        await message.answer(f"{season}-fasldagi yuklangan qismlar:", reply_markup=menu)
     else:
         await message.answer(f"⚠️ {season}-fasl uchun hali hech narsa yuklanmagan.")
 
@@ -98,20 +99,20 @@ async def show_season(message: types.Message):
 async def go_back(message: types.Message):
     await message.answer("Asosiy menyu:", reply_markup=get_main_menu())
 
-# --- ASOSIY TUZATISH: TUGMANI BOSGANDA KINONI CHIQARISH ---
-@dp.message(F.text.regexp(r'.*\d+-fasl \d+-qism.*'))
+# --- KINONI CHIQARISH ---
+@dp.message(F.text.regexp(r'\d+-fasl \d+-qism'))
 async def send_video(message: types.Message):
-    # Tugma matnidan raqamlarni ajratib olamiz: "🎬 1-fasl 1-qism" -> ['1', '1']
+    # Raqamlarni ajratish
     nums = re.findall(r'\d+', message.text)
     if len(nums) >= 2:
-        code = f"{nums[0]}_{nums[1]}" # Kod: 1_1
+        code = f"{nums[0]}_{nums[1]}"
         f_id, title = get_movie_data(code)
         
         if f_id:
             cap = f"🎬 **Anime:** {title}\n🎞 **{nums[0]}-fasl {nums[1]}-qism**\n\n{CHANNEL_ID}"
             await message.answer_video(video=f_id, caption=cap, parse_mode="Markdown")
         else:
-            await message.answer(f"⚠️ Baza ichidan '{code}' kodi topilmadi. Qayta yuklang.")
+            await message.answer(f"⚠️ Baza ichidan '{code}' kodi topilmadi.")
 
 @dp.message(F.video & (F.from_user.id == ADMIN_ID))
 async def save_video(message: types.Message):
@@ -130,7 +131,7 @@ async def save_video(message: types.Message):
         conn.commit()
         cursor.close()
         conn.close()
-        await message.reply(f"✅ Baza abadiy saqladi!\nKod: {code}\nNomi: {title}")
+        await message.reply(f"✅ Saqlandi! Kod: {code}")
 
 async def main():
     init_db()
