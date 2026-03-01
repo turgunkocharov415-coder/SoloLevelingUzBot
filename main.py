@@ -27,26 +27,32 @@ def init_db():
     conn.close()
 
 def get_movie_data(code):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT file_id, title FROM movies WHERE code = %s", (code,))
-    res = cursor.fetchone()
-    cursor.close()
-    conn.close()
-    return res if res else (None, None)
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT file_id, title FROM movies WHERE code = %s", (code,))
+        res = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        return res if res else (None, None)
+    except:
+        return (None, None)
 
 def get_uploaded_parts(season_num):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT code FROM movies WHERE code LIKE %s", (f"{season_num}_%",))
-    codes = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    parts = []
-    for c in codes:
-        try: parts.append(int(c[0].split('_')[1]))
-        except: continue
-    return sorted(list(set(parts)))
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT code FROM movies WHERE code LIKE %s", (f"{season_num}_%",))
+        codes = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        parts = []
+        for c in codes:
+            try: parts.append(int(c[0].split('_')[1]))
+            except: continue
+        return sorted(list(set(parts)))
+    except:
+        return []
 
 # --- MENYULAR ---
 def get_main_menu():
@@ -72,38 +78,39 @@ def get_inline_menu(season_num):
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     args = message.text.split()
+    # KANALDAN TUGMA ORQALI KELGANDA (/start 1 yoki /start 1_1)
     if len(args) > 1:
         param = args[1]
+        
+        # 1. Aniq bir qismni chiqarish (t.me/bot?start=1_1)
         if "_" in param:
             f_id, title = get_movie_data(param)
             if f_id:
                 cap = f"<b>🎬 Anime:</b> {title}\n<b>🎞 {param.split('_')[0]}-fasl {param.split('_')[1]}-qism</b>\n\n{CHANNEL_ID}"
                 await message.answer_video(video=f_id, caption=cap, parse_mode="HTML")
                 return
+        
+        # 2. Fasl qismlarini chiqarish (t.me/bot?start=1)
         if param.isdigit():
             menu = get_inline_menu(param)
             if menu:
-                await message.answer(f"✨ {param}-fasl qismlari yuklangan. Tanlang:", reply_markup=menu)
+                await message.answer(f"✨ {param}-fasl qismlari:", reply_markup=menu)
                 return
+            else:
+                await message.answer(f"⚠️ {param}-fasl uchun hali video yuklanmagan.")
+                return
+
+    # ODDIY START
     await message.answer("🎬 Salom! Kerakli faslni tanlang 👇", reply_markup=get_main_menu())
 
-# --- ADMIN UCHUN: KANALGA POST YUBORISH ---
-@dp.message(F.photo & (F.from_user.id == ADMIN_ID))
-async def post_to_channel(message: types.Message):
-    if message.caption and message.caption.startswith("POST"):
-        # Format: POST 1 (1-fasl uchun tugmali post yuboradi)
-        try:
-            season = message.caption.split()[1]
-            btn_url = f"https://t.me/SoloLevelingUzBot?start={season}" # To'g'ri username
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text=f"🎬 {season}-faslni ko'rish", url=btn_url)]
-            ])
-            await bot.send_photo(chat_id=CHANNEL_ID, photo=message.photo[-1].file_id, 
-                                caption=f"✨ <b>Solo Leveling: {season}-fasl</b>\n\nBarcha qismlarni bot orqali tomosha qiling!", 
-                                reply_markup=kb, parse_mode="HTML")
-            await message.reply("✅ Post kanalga yuborildi!")
-        except:
-            await message.reply("❌ Xato! Format: rasm tagiga 'POST 1' deb yozing.")
+@dp.message(F.text.in_(["1-FASL", "2-FASL", "3-FASL"]))
+async def show_season(message: types.Message):
+    season = "".join(filter(str.isdigit, message.text))
+    menu = get_inline_menu(season)
+    if menu:
+        await message.answer(f"✨ {season}-fasl qismlari:", reply_markup=menu)
+    else:
+        await message.answer(f"⚠️ {season}-fasl uchun hali video yuklanmagan.")
 
 @dp.message(F.text == "📢 Kanalimiz")
 async def open_channel(message: types.Message):
@@ -116,15 +123,23 @@ async def send_movie_callback(callback: types.CallbackQuery):
     code = callback.data.replace("get_", "")
     f_id, title = get_movie_data(code)
     if f_id:
-        cap = f"<b>🎬 Anime:</b> {title}\n<b>🎞 {code.split('_')[0]}-fasl {code.split('_')[1]}-qism</b>\n\n{CHANNEL_ID}"
-        await callback.message.answer_video(video=f_id, caption=cap, parse_mode="HTML")
+        nums = code.split("_")
+        cap = f"<b>🎬 Anime:</b> {title}\n<b>🎞 {nums[0]}-fasl {nums[1]}-qism</b>\n\n{CHANNEL_ID}"
+        try:
+            await callback.message.answer_video(video=f_id, caption=cap, parse_mode="HTML")
+        except:
+            await callback.message.answer_video(video=f_id, caption=f"🎬 {title}\n🎞 {nums[0]}-fasl {nums[1]}-qism")
         await callback.answer()
+    else:
+        await callback.answer("⚠️ Video topilmadi!", show_alert=True)
 
+# ADMIN PANEL: VIDEO YUKLASH
 @dp.message(F.video & (F.from_user.id == ADMIN_ID))
 async def save_video(message: types.Message):
     if message.caption:
         parts = message.caption.split(maxsplit=1)
-        code, title = parts[0], parts[1] if len(parts) > 1 else "Kino"
+        code = parts[0]
+        title = parts[1] if len(parts) > 1 else "Kino"
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("INSERT INTO movies (code, file_id, title) VALUES (%s, %s, %s) ON CONFLICT (code) DO UPDATE SET file_id = EXCLUDED.file_id, title = EXCLUDED.title", (code, message.video.file_id, title))
