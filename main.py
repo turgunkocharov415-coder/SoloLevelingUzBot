@@ -65,7 +65,6 @@ def get_main_menu():
     ]
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 
-# Eng muhim o'zgarish: Inline tugmalar orqali aniq kod yuborish
 def get_inline_menu(season_num):
     parts = get_uploaded_parts(season_num)
     if not parts: return None
@@ -73,7 +72,6 @@ def get_inline_menu(season_num):
     keyboard = []
     row = []
     for p in parts:
-        # Tugma matni chiroyli, lekin orqasidagi 'callback_data' aniq (masalan: "get_1_1")
         row.append(InlineKeyboardButton(text=f"🎬 {p}-qism", callback_data=f"get_{season_num}_{p}"))
         if len(row) == 3:
             keyboard.append(row)
@@ -95,16 +93,18 @@ async def show_season(message: types.Message):
     else:
         await message.answer(f"⚠️ {season}-fasl uchun hali video yuklanmagan.")
 
-# Inline tugma bosilganda videoni yuborish
 @dp.callback_query(F.data.startswith("get_"))
 async def send_movie(callback: types.CallbackQuery):
-    code = callback.data.replace("get_", "") # "get_1_1" -> "1_1"
+    code = callback.data.replace("get_", "")
     f_id, title = get_movie_data(code)
     
     if f_id:
         nums = code.split("_")
         cap = f"🎬 **Anime:** {title}\n🎞 **{nums[0]}-fasl {nums[1]}-qism**\n\n{CHANNEL_ID}"
-        await callback.message.answer_video(video=f_id, caption=cap, parse_mode="Markdown")
+        try:
+            await callback.message.answer_video(video=f_id, caption=cap, parse_mode="Markdown")
+        except Exception as e:
+            await callback.message.answer(f"❌ Video yuborishda xatolik: {e}")
         await callback.answer()
     else:
         await callback.answer("⚠️ Video topilmadi!", show_alert=True)
@@ -112,10 +112,9 @@ async def send_movie(callback: types.CallbackQuery):
 @dp.message(F.video & (F.from_user.id == ADMIN_ID))
 async def save_video(message: types.Message):
     if message.caption:
-        # Yuklash: "1_1 Solo Leveling"
         parts = message.caption.split(maxsplit=1)
-        code = parts[0]
-        title = parts[1] if len(parts) > 1 else "Solo Leveling"
+        code = parts[0] # "1_1"
+        title = parts[1] if len(parts) > 1 else "Kino"
         
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -127,7 +126,17 @@ async def save_video(message: types.Message):
         conn.commit()
         cursor.close()
         conn.close()
-        await message.reply(f"✅ Saqlandi!\nKod: {code}\nNomi: {title}")
+        await message.reply(f"✅ Saqlandi! Kod: {code}")
+
+@dp.message(Command("delete_all") & (F.from_user.id == ADMIN_ID))
+async def clear_db(message: types.Message):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM movies")
+    conn.commit()
+    cursor.close()
+    conn.close()
+    await message.answer("🗑 Baza butunlay tozalandi!")
 
 async def main():
     init_db()
