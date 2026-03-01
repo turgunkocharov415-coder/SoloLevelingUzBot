@@ -93,6 +93,7 @@ async def show_season(message: types.Message):
     else:
         await message.answer(f"⚠️ {season}-fasl uchun hali video yuklanmagan.")
 
+# --- XATOLIK TUZATILGAN QISMI ---
 @dp.callback_query(F.data.startswith("get_"))
 async def send_movie(callback: types.CallbackQuery):
     code = callback.data.replace("get_", "")
@@ -100,11 +101,13 @@ async def send_movie(callback: types.CallbackQuery):
     
     if f_id:
         nums = code.split("_")
-        cap = f"🎬 **Anime:** {title}\n🎞 **{nums[0]}-fasl {nums[1]}-qism**\n\n{CHANNEL_ID}"
+        # Markdown o'rniga HTML ishlatamiz (bu xatoliklarni oldini oladi)
+        cap = f"<b>🎬 Anime:</b> {title}\n<b>🎞 {nums[0]}-fasl {nums[1]}-qism</b>\n\n{CHANNEL_ID}"
         try:
-            await callback.message.answer_video(video=f_id, caption=cap, parse_mode="Markdown")
+            await callback.message.answer_video(video=f_id, caption=cap, parse_mode="HTML")
         except Exception as e:
-            await callback.message.answer(f"❌ Video yuborishda xatolik: {e}")
+            # Agar HTML ham xato bersa, shunchaki oddiy matn yuboramiz
+            await callback.message.answer_video(video=f_id, caption=f"🎬 {title}\n🎞 {nums[0]}-fasl {nums[1]}-qism\n\n{CHANNEL_ID}")
         await callback.answer()
     else:
         await callback.answer("⚠️ Video topilmadi!", show_alert=True)
@@ -113,8 +116,8 @@ async def send_movie(callback: types.CallbackQuery):
 async def save_video(message: types.Message):
     if message.caption:
         parts = message.caption.split(maxsplit=1)
-        code = parts[0] # "1_1"
-        title = parts[1] if len(parts) > 1 else "Kino"
+        code = parts[0]
+        title = parts[1] if len(parts) > 1 else "Solo Leveling"
         
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -136,7 +139,7 @@ async def clear_db(message: types.Message):
     conn.commit()
     cursor.close()
     conn.close()
-    await message.answer("🗑 Baza butunlay tozalandi!")
+    await message.answer("🗑 Baza tozalandi!")
 
 async def main():
     init_db()
